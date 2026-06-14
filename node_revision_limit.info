@@ -1,0 +1,5 @@
+name = Node Revision Limit
+description = Limits the number of previous revisions kept per node content type. Prunes excess old revisions on node save and via a cron queue. Forward draft revisions are never touched.
+type = module
+backdrop = 1.x
+version = 1.x-1.0.0

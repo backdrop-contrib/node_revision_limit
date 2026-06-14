@@ -1,0 +1,192 @@
+<?php
+/**
+ * @file
+ * Limits the number of previous node revisions kept per content type.
+ *
+ * Old revisions (vid < current node.vid) are pruned on node save and via a
+ * cron queue. Forward draft revisions (vid > current node.vid) are never
+ * touched, making this safe to use alongside draft_workflow and similar modules.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function node_revision_limit_menu() {
+  $items['admin/config/content/node-revision-limit'] = array(
+    'title' => 'Node Revision Limit',
+    'description' => 'View revision limits per content type and queue bulk pruning.',
+    'page callback' => 'backdrop_get_form',
+    'page arguments' => array('node_revision_limit_admin_form'),
+    'access arguments' => array('administer content types'),
+    'file' => 'node_revision_limit.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_form_node_type_form_alter().
+ *
+ * Adds a revision limit field to the content type edit form, alongside the
+ * core revision settings and any draft_workflow fields.
+ */
+function node_revision_limit_form_node_type_form_alter(&$form, &$form_state) {
+  $type = $form['#node_type']->type;
+  $limit = config_get('node.type.' . $type, 'settings.node_revision_limit');
+
+  $form['revision']['node_revision_limit'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Maximum previous revisions to keep'),
+    '#description' => t('Number of old revisions to retain per node of this type. Leave blank for unlimited. Set to 0 to keep no previous revisions (current state only). Forward draft revisions are never counted or removed.'),
+    '#default_value' => ($limit !== NULL && $limit !== '') ? (int) $limit : '',
+    '#size' => 5,
+    '#maxlength' => 6,
+    '#element_validate' => array('node_revision_limit_validate_limit'),
+  );
+
+  $form['#submit'][] = 'node_revision_limit_node_type_form_submit';
+}
+
+/**
+ * Element validate callback: ensures the limit is a non-negative integer or blank.
+ */
+function node_revision_limit_validate_limit($element, &$form_state) {
+  $value = trim($element['#value']);
+  if ($value !== '' && (!ctype_digit($value) || (int) $value < 0)) {
+    form_error($element, t('Maximum previous revisions must be a whole number of 0 or greater, or left blank for unlimited.'));
+  }
+}
+
+/**
+ * Submit handler for the content type form.
+ *
+ * Saves the limit to CMI and queues a prune pass if the limit was tightened.
+ */
+function node_revision_limit_node_type_form_submit($form, &$form_state) {
+  $type = $form_state['values']['type'];
+  $raw = trim($form_state['values']['node_revision_limit']);
+  $new_limit = ($raw === '') ? NULL : (int) $raw;
+  $old_limit = config_get('node.type.' . $type, 'settings.node_revision_limit');
+
+  $config = config('node.type.' . $type);
+  $config->set('settings.node_revision_limit', $new_limit);
+  $config->save();
+
+  // Queue a bulk prune if a limit is now active and is lower than before.
+  if ($new_limit !== NULL) {
+    $old_is_unlimited = ($old_limit === NULL || $old_limit === '');
+    $limit_tightened = $old_is_unlimited || ((int) $old_limit > $new_limit);
+    if ($limit_tightened) {
+      $count = node_revision_limit_queue_type($type, $new_limit);
+      backdrop_set_message(t(
+        'Revision pruning queued for @count node(s) of type %type. Excess old revisions will be removed during the next cron run.',
+        array('@count' => $count, '%type' => $type)
+      ));
+    }
+  }
+}
+
+/**
+ * Implements hook_node_update().
+ *
+ * Prunes old revisions for the saved node immediately after each save.
+ */
+function node_revision_limit_node_update(Node $node) {
+  $limit = config_get('node.type.' . $node->type, 'settings.node_revision_limit');
+
+  if ($limit === NULL || $limit === '') {
+    return;
+  }
+
+  node_revision_limit_prune_node($node->nid, (int) $limit);
+}
+
+/**
+ * Prunes old revisions for a single node down to the configured limit.
+ *
+ * Only revisions with vid < the current node.vid are considered. Forward
+ * revisions (vid > node.vid, e.g. draft_workflow drafts) are never touched.
+ *
+ * @param int $nid
+ *   The node ID to prune.
+ * @param int $limit
+ *   Number of old revisions to keep. 0 keeps none (current state only).
+ *
+ * @return int
+ *   Number of revisions deleted.
+ */
+function node_revision_limit_prune_node($nid, $limit) {
+  $current_vid = db_query(
+    'SELECT vid FROM {node} WHERE nid = :nid',
+    array(':nid' => $nid)
+  )->fetchField();
+
+  if (!$current_vid) {
+    return 0;
+  }
+
+  // Fetch old revision IDs only (vid < current), newest first so we keep
+  // the most recent $limit ones and delete the oldest.
+  $vids = db_query(
+    'SELECT vid FROM {node_revision} WHERE nid = :nid AND vid < :current_vid ORDER BY vid DESC',
+    array(':nid' => $nid, ':current_vid' => $current_vid)
+  )->fetchCol();
+
+  if (count($vids) <= $limit) {
+    return 0;
+  }
+
+  $to_delete = array_slice($vids, $limit);
+  foreach ($to_delete as $vid) {
+    node_revision_delete($vid);
+  }
+
+  return count($to_delete);
+}
+
+/**
+ * Adds all nodes of a content type to the cron prune queue.
+ *
+ * @param string $type
+ *   Content type machine name.
+ * @param int $limit
+ *   The revision limit to enforce.
+ *
+ * @return int
+ *   Number of queue items created (= number of nodes queued).
+ */
+function node_revision_limit_queue_type($type, $limit) {
+  $queue = BackdropQueue::get('node_revision_limit_prune');
+  $nids = db_query(
+    'SELECT nid FROM {node} WHERE type = :type',
+    array(':type' => $type)
+  )->fetchCol();
+
+  foreach ($nids as $nid) {
+    $queue->createItem(array('nid' => $nid, 'limit' => $limit));
+  }
+
+  return count($nids);
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function node_revision_limit_cron_queue_info() {
+  return array(
+    'node_revision_limit_prune' => array(
+      'worker callback' => 'node_revision_limit_queue_worker',
+      'time' => 30,
+    ),
+  );
+}
+
+/**
+ * Cron queue worker: prunes old revisions for a single node.
+ *
+ * @param array $item
+ *   Queue item with 'nid' and 'limit' keys.
+ */
+function node_revision_limit_queue_worker(array $item) {
+  node_revision_limit_prune_node($item['nid'], $item['limit']);
+}
