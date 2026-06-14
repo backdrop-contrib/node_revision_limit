@@ -37,7 +37,17 @@ function node_revision_limit_admin_form($form, &$form_state) {
   $rows = array();
   foreach ($types as $type_name => $type) {
     $limit = config_get('node.type.' . $type_name, 'settings.node_revision_limit');
-    $limit_display = ($limit === NULL || $limit === '') ? t('Unlimited') : (int) $limit;
+    $revisions_enabled = !empty($type->settings['revision_enabled']);
+
+    if (!$revisions_enabled) {
+      $limit_display = t('Revisions disabled');
+    }
+    elseif ($limit === NULL || $limit === '') {
+      $limit_display = t('Unlimited');
+    }
+    else {
+      $limit_display = (int) $limit;
+    }
 
     $node_count = db_query(
       'SELECT COUNT(*) FROM {node} WHERE type = :type',
