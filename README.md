@@ -3,6 +3,14 @@
 
 Node Revision Limit adds a configurable revision cap to each content type. When a node is saved, any old revisions beyond the cap are pruned automatically. A cron queue handles bulk pruning when the limit is reduced across many existing nodes. Forward draft revisions - used by modules such as Draft Workflow — are never touched, making this module safe to use alongside any revision-based workflow.
 
+## Why use this module?
+
+Backdrop creates one revision per node regardless of whether revisions are enabled or disabled — it is a structural requirement of how nodes are stored. With revisions disabled, that revision is wasted: it takes up space but gives you nothing.
+
+By enabling revisions and setting this module's limit to 1, you get a free undo. If an editor overwrites content by mistake, the previous version is one click away via the Revisions tab. The storage cost is similar either way — with revisions disabled, Backdrop stores a duplicate of the current content as a structural revision, wasting that space. With revisions enabled and a limit of 1, that same slot holds the previous version instead, giving you a free undo.
+
+Use higher limits (2, 5, 10) where a fuller edit history matters. Leave blank for unlimited on content types where full history is important, such as legal pages or documentation.
+
 ## Features
 
 * **Per Content Type Limit:** Set a maximum number of previous revisions to keep for each content type independently. Leave blank for unlimited (default Backdrop behaviour). Set to 0 to keep no previous revisions at all.
