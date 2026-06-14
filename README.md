@@ -1,7 +1,7 @@
 # Node Revision Limit
-**Node Revision Limit** — Cap the number of previous node revisions kept per content type, reclaiming database space without losing revision history entirely.
+**Node Revision Limit** - Cap the number of previous node revisions kept per content type, reclaiming database space without losing revision history entirely.
 
-Node Revision Limit adds a configurable revision cap to each content type. When a node is saved, any old revisions beyond the cap are pruned automatically. A cron queue handles bulk pruning when the limit is reduced across many existing nodes. Forward draft revisions — used by modules such as Draft Workflow — are never touched, making this module safe to use alongside any revision-based workflow.
+Node Revision Limit adds a configurable revision cap to each content type. When a node is saved, any old revisions beyond the cap are pruned automatically. A cron queue handles bulk pruning when the limit is reduced across many existing nodes. Forward draft revisions - used by modules such as Draft Workflow — are never touched, making this module safe to use alongside any revision-based workflow.
 
 ## Features
 
@@ -36,15 +36,15 @@ No database updates or additional configuration is required after enabling the m
 
 Existing old revisions that exceed the new limit will be removed during the next cron run. Future saves will prune automatically without cron.
 
-## Compatibility
+## Compatibility with similar modules
 
 | Module | Status |
 |---|---|
-| Draft Workflow | Safe — forward draft revisions are never pruned |
-| Revisioning | Safe — forward pending revisions are never pruned |
+| Draft Workflow | Safe - forward draft revisions are never pruned |
+| Revisioning | Safe - forward pending revisions are never pruned |
 | Enforce Revlog | No conflict |
-| Node Revision History | Complementary — useful for one-off backlog cleanup |
-| Diff | No conflict — fewer revisions means fewer diffs available |
+| Node Revision History | Complementary - useful for one-off backlog cleanup |
+| Diff | No conflict - fewer revisions means fewer diffs available |
 
 ## Issues
 
@@ -55,7 +55,7 @@ Bugs and feature requests should be reported in the Issue Queue on GitHub.
 - Additional maintainers and contributors welcome.
 
 ## Credits
-- Steve Moorhouse — Zulip (DrAlbany)
+- Steve Moorhouse - Zulip (DrAlbany)
 - Claude Code by Anthropic assisted with development of this module.
 
 - Current development is sponsored by [Albany Computer Services](https://www.albany-computers.co.uk), providers of computer support, [web design](https://www.albanywebdesign.co.uk), and [web hosting](https://www.albanywebdesign.co.uk).
